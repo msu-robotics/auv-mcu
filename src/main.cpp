@@ -3,8 +3,14 @@
 #include <rcl/rcl.h>
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
+#include <math.h>
+#include <string.h>
+#include <stdio.h>
+#include <rcl/time.h>
 
 #include <std_msgs/msg/int32.h>
+#include <sensor_msgs/msg/imu.h>
+#include <sensor_msgs/msg/magnetic_field.h>
 
 #include <REG.h>
 #include <wit_c_sdk.h>
@@ -24,7 +30,9 @@ static void Delayms(uint16_t ucMs);
 const uint32_t c_uiBaud[8] = {0, 4800, 9600, 19200, 38400, 57600, 115200, 230400};
 
 rcl_publisher_t publisher;
-std_msgs__msg__Int32 msg;
+// std_msgs__msg__Int32 msg;
+sensor_msgs__msg__Imu imu_msg;
+sensor_msgs__msg__MagneticField magnetic_msg;
 
 rclc_executor_t executor;
 rclc_support_t support;
@@ -45,38 +53,53 @@ void error_loop()
 	}
 }
 
+rcl_time_point_value_t now;
 void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
 {
+	
 	RCLC_UNUSED(last_call_time);
 	if (timer != NULL)
 	{
-		RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
-		msg.data++;
-	}
-}
-
-void CopeCmdData(unsigned char ucData)
-{
-	static unsigned char s_ucData[50], s_ucRxCnt = 0;
-
-	s_ucData[s_ucRxCnt++] = ucData;
-	if (s_ucRxCnt < 3)
-		return; // Less than three data returned
-	if (s_ucRxCnt >= 50)
-		s_ucRxCnt = 0;
-	if (s_ucRxCnt >= 3)
-	{
-		if ((s_ucData[1] == '\r') && (s_ucData[2] == '\n'))
+		if (s_cDataUpdate)
 		{
-			s_cCmd = s_ucData[0];
-			memset(s_ucData, 0, 50);
-			s_ucRxCnt = 0;
-		}
-		else
-		{
-			s_ucData[0] = s_ucData[1];
-			s_ucData[1] = s_ucData[2];
-			s_ucRxCnt = 2;
+			// Заполняем imu_msg
+			rcl_ret_t rc = rcl_clock_get_now(&support.clock, &now);
+			if (rc == RCL_RET_OK) {
+				imu_msg.header.stamp.sec = now / 1000000000ULL;
+				imu_msg.header.stamp.nanosec = now % 1000000000ULL;
+			}
+			imu_msg.header.frame_id.data = const_cast<char*>("imu_link");
+			imu_msg.header.frame_id.size = strlen("imu_link");
+			imu_msg.header.frame_id.capacity = imu_msg.header.frame_id.size + 1;
+			
+			float fAcc[3], fGyro[3], fAngle[3];
+			for (int i = 0; i < 3; i++)
+			{
+				fAcc[i] = sReg[AX + i] / 32768.0f * 16.0f;
+				fGyro[i] = sReg[GX + i] / 32768.0f * 2000.0f;
+				fAngle[i] = sReg[Roll + i] / 32768.0f * 180.0f;
+			}
+	
+			// Orientation (кватернионы)
+			imu_msg.orientation.w = sReg[q0] / 32768.0f;
+			imu_msg.orientation.x = sReg[q1] / 32768.0f;
+			imu_msg.orientation.y = sReg[q2] / 32768.0f;
+			imu_msg.orientation.z = sReg[q3] / 32768.0f;
+	
+			// Angular velocity (рад/с)
+			imu_msg.angular_velocity.x = fGyro[0] * (M_PI / 180.0f);
+			imu_msg.angular_velocity.y = fGyro[1] * (M_PI / 180.0f);
+			imu_msg.angular_velocity.z = fGyro[2] * (M_PI / 180.0f);
+	
+			// Linear acceleration (м/с²)
+			imu_msg.linear_acceleration.x = fAcc[0] * 9.80665f;
+			imu_msg.linear_acceleration.y = fAcc[1] * 9.80665f;
+			imu_msg.linear_acceleration.z = fAcc[2] * 9.80665f;
+	
+			// Publish
+			RCSOFTCHECK(rcl_publish(&publisher, &imu_msg, NULL));
+
+			s_cDataUpdate = 0;
 		}
 	}
 }
@@ -86,14 +109,15 @@ static void SensorUartSend(uint8_t *p_data, uint32_t uiSize)
 	Serial1.write(p_data, uiSize);
 	Serial1.flush();
 }
+
 static void Delayms(uint16_t ucMs)
 {
 	delay(ucMs);
 }
+
 static void SensorDataUpdata(uint32_t uiReg, uint32_t uiRegNum)
 {
-	int i;
-	for (i = 0; i < uiRegNum; i++)
+	for (int i = 0; i < uiRegNum; i++)
 	{
 		switch (uiReg)
 		{
@@ -155,28 +179,29 @@ void setup()
 	RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
 
 	// create node
-	RCCHECK(rclc_node_init_default(&node, "micro_ros_arduino_node", "", &support));
+	RCCHECK(rclc_node_init_default(&node, "esp32_sensors_node", "", &support));
 
 	// create publisher
-	RCCHECK(rclc_publisher_init_default(
-		&publisher,
-		&node,
-		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-		"micro_ros_arduino_node_publisher"));
+	RCCHECK(rclc_publisher_init_best_effort(&publisher, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "sensors/imu"));
+
+	const char* frame_id = "imu_link";
+	size_t len = strlen(frame_id);
+	imu_msg.header.frame_id.data = (char*)malloc(len + 1);
+	imu_msg.header.stamp.sec = 0;
+	imu_msg.header.stamp.nanosec = 0;
+    strcpy(imu_msg.header.frame_id.data, "imu_link");
+    imu_msg.header.frame_id.size = strlen(imu_msg.header.frame_id.data);
+    imu_msg.header.frame_id.capacity = imu_msg.header.frame_id.size + 1;
 
 	// create timer,
 	const unsigned int timer_timeout = 1000;
-	RCCHECK(rclc_timer_init_default(
-		&timer,
-		&support,
-		RCL_MS_TO_NS(timer_timeout),
-		timer_callback));
+	RCCHECK(rclc_timer_init_default(&timer, &support, RCL_MS_TO_NS(timer_timeout), timer_callback));
 
 	// create executor
 	RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
 	RCCHECK(rclc_executor_add_timer(&executor, &timer));
 
-	msg.data = 0;
+	// msg.data = 0;
 
 	WitInit(WIT_PROTOCOL_NORMAL, 0x50);
 	WitSerialWriteRegister(SensorUartSend);
@@ -185,8 +210,7 @@ void setup()
 	AutoScanSensor();
 }
 
-int i;
-float fAcc[3], fGyro[3], fAngle[3];
+
 
 void loop()
 {
@@ -197,40 +221,9 @@ void loop()
 	{
 		WitSerialDataIn(Serial1.read());
 	}
+}
 
-	if (s_cDataUpdate)
-	{
-		for (i = 0; i < 3; i++)
-		{
-			fAcc[i] = sReg[AX + i] / 32768.0f * 16.0f;
-			fGyro[i] = sReg[GX + i] / 32768.0f * 2000.0f;
-			fAngle[i] = sReg[Roll + i] / 32768.0f * 180.0f;
-		}
-		if (s_cDataUpdate & ACC_UPDATE)
-		{
-			// fAcc[0], fAcc[1], fAcc[2]
 
-			s_cDataUpdate &= ~ACC_UPDATE;
-		}
-		if (s_cDataUpdate & GYRO_UPDATE)
-		{
-			// fGyro[0], fGyro[1], fGyro[2]
+void sensors_loop(){
 
-			s_cDataUpdate &= ~GYRO_UPDATE;
-		}
-		if (s_cDataUpdate & ANGLE_UPDATE)
-		{
-			// fAngle[0], fAngle[1], fAngle[2]
-			// sReg[q0], sReg[q1], sReg[q2], sReg[q3]
-
-			s_cDataUpdate &= ~ANGLE_UPDATE;
-		}
-		if (s_cDataUpdate & MAG_UPDATE)
-		{
-			// sReg[HX], sReg[HY], sReg[HZ]
-
-			s_cDataUpdate &= ~MAG_UPDATE;
-		}
-		s_cDataUpdate = 0;
-	}
 }

@@ -1,4 +1,11 @@
 #include <Arduino.h>
+#include <micro_ros_platformio.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+
+#include <std_msgs/msg/int32.h>
+
 #include <REG.h>
 #include <wit_c_sdk.h>
 
@@ -15,6 +22,38 @@ static void SensorUartSend(uint8_t *p_data, uint32_t uiSize);
 static void SensorDataUpdata(uint32_t uiReg, uint32_t uiRegNum);
 static void Delayms(uint16_t ucMs);
 const uint32_t c_uiBaud[8] = {0, 4800, 9600, 19200, 38400, 57600, 115200, 230400};
+
+rcl_publisher_t publisher;
+std_msgs__msg__Int32 msg;
+
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+rcl_timer_t timer;
+
+#define LED_PIN 13
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+
+void error_loop()
+{
+	while (1)
+	{
+		digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+		delay(100);
+	}
+}
+
+void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
+{
+	RCLC_UNUSED(last_call_time);
+	if (timer != NULL)
+	{
+		RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+		msg.data++;
+	}
+}
 
 void CopeCmdData(unsigned char ucData)
 {
@@ -41,94 +80,7 @@ void CopeCmdData(unsigned char ucData)
 		}
 	}
 }
-static void ShowHelp(void)
-{
-	Serial.print("\r\n************************	     WIT_SDK_DEMO	   ************************");
-	Serial.print("\r\n************************          HELP           ************************\r\n");
-	Serial.print("UART SEND:a\\r\\n   Acceleration calibration.\r\n");
-	Serial.print("UART SEND:m\\r\\n   Magnetic field calibration,After calibration send:   e\\r\\n   to indicate the end\r\n");
-	Serial.print("UART SEND:U\\r\\n   Bandwidth increase.\r\n");
-	Serial.print("UART SEND:u\\r\\n   Bandwidth reduction.\r\n");
-	Serial.print("UART SEND:B\\r\\n   Baud rate increased to 115200.\r\n");
-	Serial.print("UART SEND:b\\r\\n   Baud rate reduction to 9600.\r\n");
-	Serial.print("UART SEND:R\\r\\n   The return rate increases to 10Hz.\r\n");
-	Serial.print("UART SEND:r\\r\\n   The return rate reduction to 1Hz.\r\n");
-	Serial.print("UART SEND:C\\r\\n   Basic return content: acceleration, angular velocity, angle, magnetic field.\r\n");
-	Serial.print("UART SEND:c\\r\\n   Return content: acceleration.\r\n");
-	Serial.print("UART SEND:h\\r\\n   help.\r\n");
-	Serial.print("******************************************************************************\r\n");
-}
 
-static void CmdProcess(void)
-{
-	switch (s_cCmd)
-	{
-	case 'a':
-		if (WitStartAccCali() != WIT_HAL_OK)
-			Serial.print("\r\nSet AccCali Error\r\n");
-		break;
-	case 'm':
-		if (WitStartMagCali() != WIT_HAL_OK)
-			Serial.print("\r\nSet MagCali Error\r\n");
-		break;
-	case 'e':
-		if (WitStopMagCali() != WIT_HAL_OK)
-			Serial.print("\r\nSet MagCali Error\r\n");
-		break;
-	case 'u':
-		if (WitSetBandwidth(BANDWIDTH_5HZ) != WIT_HAL_OK)
-			Serial.print("\r\nSet Bandwidth Error\r\n");
-		break;
-	case 'U':
-		if (WitSetBandwidth(BANDWIDTH_256HZ) != WIT_HAL_OK)
-			Serial.print("\r\nSet Bandwidth Error\r\n");
-		break;
-	case 'B':
-		if (WitSetUartBaud(WIT_BAUD_115200) != WIT_HAL_OK)
-			Serial.print("\r\nSet Baud Error\r\n");
-		else
-		{
-			Serial1.begin(c_uiBaud[WIT_BAUD_115200]);
-			Serial.print(" 115200 Baud rate modified successfully\r\n");
-		}
-		break;
-	case 'b':
-		if (WitSetUartBaud(WIT_BAUD_9600) != WIT_HAL_OK)
-			Serial.print("\r\nSet Baud Error\r\n");
-		else
-		{
-			Serial1.begin(c_uiBaud[WIT_BAUD_9600]);
-			Serial.print(" 9600 Baud rate modified successfully\r\n");
-		}
-		break;
-	case 'r':
-		if (WitSetOutputRate(RRATE_1HZ) != WIT_HAL_OK)
-			Serial.print("\r\nSet Baud Error\r\n");
-		else
-			Serial.print("\r\nSet Baud Success\r\n");
-		break;
-	case 'R':
-		if (WitSetOutputRate(RRATE_10HZ) != WIT_HAL_OK)
-			Serial.print("\r\nSet Baud Error\r\n");
-		else
-			Serial.print("\r\nSet Baud Success\r\n");
-		break;
-	case 'C':
-		if (WitSetContent(RSW_ACC | RSW_GYRO | RSW_ANGLE | RSW_MAG) != WIT_HAL_OK)
-			Serial.print("\r\nSet RSW Error\r\n");
-		break;
-	case 'c':
-		if (WitSetContent(RSW_ACC) != WIT_HAL_OK)
-			Serial.print("\r\nSet RSW Error\r\n");
-		break;
-	case 'h':
-		ShowHelp();
-		break;
-	default:
-		break;
-	}
-	s_cCmd = 0xff;
-}
 static void SensorUartSend(uint8_t *p_data, uint32_t uiSize)
 {
 	Serial1.write(p_data, uiSize);
@@ -183,45 +135,69 @@ static void AutoScanSensor(void)
 			{
 				WitSerialDataIn(Serial1.read());
 			}
-			if (s_cDataUpdate != 0)
-			{
-				Serial.print(c_uiBaud[i]);
-				Serial.print(" baud find sensor\r\n\r\n");
-				ShowHelp();
-				return;
-			}
 			iRetry--;
 		} while (iRetry);
 	}
-	Serial.print("can not find sensor\r\n");
-	Serial.print("please check your connection\r\n");
 }
 
 void setup()
 {
-	// put your setup code here, to run once:
 	Serial.begin(115200);
+	set_microros_serial_transports(Serial);
+	pinMode(LED_PIN, OUTPUT);
+	digitalWrite(LED_PIN, HIGH);
+
+	delay(2000);
+
+	allocator = rcl_get_default_allocator();
+
+	// create init_options
+	RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+
+	// create node
+	RCCHECK(rclc_node_init_default(&node, "micro_ros_arduino_node", "", &support));
+
+	// create publisher
+	RCCHECK(rclc_publisher_init_default(
+		&publisher,
+		&node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+		"micro_ros_arduino_node_publisher"));
+
+	// create timer,
+	const unsigned int timer_timeout = 1000;
+	RCCHECK(rclc_timer_init_default(
+		&timer,
+		&support,
+		RCL_MS_TO_NS(timer_timeout),
+		timer_callback));
+
+	// create executor
+	RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+	RCCHECK(rclc_executor_add_timer(&executor, &timer));
+
+	msg.data = 0;
+
 	WitInit(WIT_PROTOCOL_NORMAL, 0x50);
 	WitSerialWriteRegister(SensorUartSend);
 	WitRegisterCallBack(SensorDataUpdata);
 	WitDelayMsRegister(Delayms);
-	Serial.print("\r\n********************** wit-motion normal example  ************************\r\n");
 	AutoScanSensor();
 }
+
 int i;
 float fAcc[3], fGyro[3], fAngle[3];
 
 void loop()
 {
+	delay(100);
+	RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+
 	while (Serial1.available())
 	{
 		WitSerialDataIn(Serial1.read());
 	}
-	while (Serial.available())
-	{
-		CopeCmdData(Serial.read());
-	}
-	CmdProcess();
+
 	if (s_cDataUpdate)
 	{
 		for (i = 0; i < 3; i++)
@@ -232,71 +208,27 @@ void loop()
 		}
 		if (s_cDataUpdate & ACC_UPDATE)
 		{
-			Serial.print(">accX:");
-			Serial.println(fAcc[0], 3);
-			Serial.print(">accY:");
-			Serial.println(fAcc[1], 3);
-			Serial.print(">accZ:");
-			Serial.println(fAcc[2], 3);
+			// fAcc[0], fAcc[1], fAcc[2]
+
 			s_cDataUpdate &= ~ACC_UPDATE;
 		}
 		if (s_cDataUpdate & GYRO_UPDATE)
 		{
-			Serial.print(">gyroX:");
-			Serial.println(fGyro[0], 1);
-			Serial.print(">gyroY:");
-			Serial.println(fGyro[1], 1);
-			Serial.print(">gyroZ:");
-			Serial.println(fGyro[2], 1);
+			// fGyro[0], fGyro[1], fGyro[2]
+
 			s_cDataUpdate &= ~GYRO_UPDATE;
 		}
 		if (s_cDataUpdate & ANGLE_UPDATE)
 		{
-			Serial.print(">angleX:");
-			Serial.println(fAngle[0], 3);
-			Serial.print(">angleY:");
-			Serial.println(fAngle[1], 3);
-			Serial.print(">angleZ:");
-			Serial.println(fAngle[2], 3);
-			
-			Serial.print(">3D|angle3D:S:cube:P:1:1:1:Q:");
-			Serial.print(sReg[q0]);
-			Serial.print(":");
-			Serial.print(sReg[q1]);
-			Serial.print(":");
-			Serial.print(sReg[q2]);
-			Serial.print(":");
-			Serial.print(sReg[q3]);
-			Serial.print(":");
-			Serial.println("W:2:H:2:D:2:C:#2ecc71");
+			// fAngle[0], fAngle[1], fAngle[2]
+			// sReg[q0], sReg[q1], sReg[q2], sReg[q3]
 
 			s_cDataUpdate &= ~ANGLE_UPDATE;
 		}
 		if (s_cDataUpdate & MAG_UPDATE)
 		{
-			Serial.print(">magX:");
-			Serial.println(sReg[HX]);
-			Serial.print(">magY:");
-			Serial.println(sReg[HY]);
-			Serial.print(">magZ:");
-			Serial.println(sReg[HZ]);
-			Serial.print(">magXY:");
-			Serial.print(sReg[HX]);
-			Serial.print(":");
-			Serial.print(sReg[HY]);
-			Serial.println("|xy");
+			// sReg[HX], sReg[HY], sReg[HZ]
 
-			Serial.print(">magXZ:");
-			Serial.print(sReg[HX]);
-			Serial.print(":");
-			Serial.print(sReg[HZ]);
-			Serial.println("|xy");
-
-			Serial.print(">magYZ:");
-			Serial.print(sReg[HY]);
-			Serial.print(":");
-			Serial.print(sReg[HZ]);
-			Serial.println("|xy");
 			s_cDataUpdate &= ~MAG_UPDATE;
 		}
 		s_cDataUpdate = 0;

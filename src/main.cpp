@@ -1,19 +1,26 @@
 #include <Arduino.h>
 
+#define BAUD_RATE 9600
+
 void setup()
 {
-	Serial.begin(9600);
-	Serial1.begin(9600, SERIAL_8N1, 27, 26);
+	Serial.begin(BAUD_RATE);
+	while (!Serial) {
+		delay(10);
+	}
+	Serial1.begin(BAUD_RATE, SERIAL_8N1, 27, 26);
 }
 
 void loop()
 {
 	if (Serial1.available())
 	{
-		Serial.write(Serial1.read());
+		char c = Serial1.read();
+		Serial.write(c);
 	}
 	if (Serial.available())
 	{
-		Serial1.write(Serial.read());
+		char c = Serial.read();
+		Serial1.write(c);
 	}
 }

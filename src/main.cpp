@@ -259,12 +259,14 @@ void loop()
 			Serial.print(">angleZ:");
 			Serial.println(fAngle[2], 3);
 			
-			Serial.print(">3D|angle3D:S:cube:P:1:1:1:R:");
-			Serial.print(fAngle[0], 3);
+			Serial.print(">3D|angle3D:S:cube:P:1:1:1:Q:");
+			Serial.print(sReg[q0]);
 			Serial.print(":");
-			Serial.print(fAngle[1], 3);
+			Serial.print(sReg[q1]);
 			Serial.print(":");
-			Serial.print(fAngle[2], 3);
+			Serial.print(sReg[q2]);
+			Serial.print(":");
+			Serial.print(sReg[q3]);
 			Serial.print(":");
 			Serial.println("W:2:H:2:D:2:C:#2ecc71");
 

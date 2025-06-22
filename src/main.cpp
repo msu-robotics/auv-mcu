@@ -3,14 +3,9 @@
 #include <rcl/rcl.h>
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
-#include <math.h>
-#include <string.h>
-#include <stdio.h>
-#include <rcl/time.h>
 
-#include <std_msgs/msg/int32.h>
 #include <sensor_msgs/msg/imu.h>
-#include <sensor_msgs/msg/magnetic_field.h>
+#include <std_msgs/msg/int32.h>
 
 #include <REG.h>
 #include <wit_c_sdk.h>
@@ -22,27 +17,27 @@
 #define READ_UPDATE 0x80
 static volatile char s_cDataUpdate = 0, s_cCmd = 0xff;
 
-static void CmdProcess(void);
-static void AutoScanSensor(void);
+#define LED_PIN 2
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+
 static void SensorUartSend(uint8_t *p_data, uint32_t uiSize);
 static void SensorDataUpdata(uint32_t uiReg, uint32_t uiRegNum);
 static void Delayms(uint16_t ucMs);
 const uint32_t c_uiBaud[8] = {0, 4800, 9600, 19200, 38400, 57600, 115200, 230400};
 
-rcl_publisher_t publisher;
-// std_msgs__msg__Int32 msg;
-sensor_msgs__msg__Imu imu_msg;
-sensor_msgs__msg__MagneticField magnetic_msg;
-
-rclc_executor_t executor;
-rclc_support_t support;
 rcl_allocator_t allocator;
+rclc_support_t support;
 rcl_node_t node;
-rcl_timer_t timer;
+rcl_publisher_t pub_imu;
+rcl_publisher_t pub_temp;
+rcl_timer_t timer_imu;
+rcl_timer_t timer_temp;
+rclc_executor_t executor;
 
-#define LED_PIN 13
-#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
-#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+
+sensor_msgs__msg__Imu imu_msg;
+std_msgs__msg__Int32 temp_msg;
 
 void error_loop()
 {
@@ -53,25 +48,16 @@ void error_loop()
 	}
 }
 
-rcl_time_point_value_t now;
-void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
+void imu_callback(rcl_timer_t *timer, int64_t last_call_time)
 {
-	
 	RCLC_UNUSED(last_call_time);
+
 	if (timer != NULL)
 	{
 		if (s_cDataUpdate)
 		{
 			// Заполняем imu_msg
-			rcl_ret_t rc = rcl_clock_get_now(&support.clock, &now);
-			if (rc == RCL_RET_OK) {
-				imu_msg.header.stamp.sec = now / 1000000000ULL;
-				imu_msg.header.stamp.nanosec = now % 1000000000ULL;
-			}
-			imu_msg.header.frame_id.data = const_cast<char*>("imu_link");
-			imu_msg.header.frame_id.size = strlen("imu_link");
-			imu_msg.header.frame_id.capacity = imu_msg.header.frame_id.size + 1;
-			
+
 			float fAcc[3], fGyro[3], fAngle[3];
 			for (int i = 0; i < 3; i++)
 			{
@@ -79,29 +65,35 @@ void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
 				fGyro[i] = sReg[GX + i] / 32768.0f * 2000.0f;
 				fAngle[i] = sReg[Roll + i] / 32768.0f * 180.0f;
 			}
-	
-			// Orientation (кватернионы)
-			imu_msg.orientation.w = sReg[q0] / 32768.0f;
-			imu_msg.orientation.x = sReg[q1] / 32768.0f;
-			imu_msg.orientation.y = sReg[q2] / 32768.0f;
-			imu_msg.orientation.z = sReg[q3] / 32768.0f;
-	
-			// Angular velocity (рад/с)
-			imu_msg.angular_velocity.x = fGyro[0] * (M_PI / 180.0f);
-			imu_msg.angular_velocity.y = fGyro[1] * (M_PI / 180.0f);
-			imu_msg.angular_velocity.z = fGyro[2] * (M_PI / 180.0f);
-	
-			// Linear acceleration (м/с²)
-			imu_msg.linear_acceleration.x = fAcc[0] * 9.80665f;
-			imu_msg.linear_acceleration.y = fAcc[1] * 9.80665f;
-			imu_msg.linear_acceleration.z = fAcc[2] * 9.80665f;
-	
-			// Publish
-			RCSOFTCHECK(rcl_publish(&publisher, &imu_msg, NULL));
 
+			// Orientation (кватернионы)
+			imu_msg.orientation.w = sReg[q0];
+			imu_msg.orientation.x = sReg[q1];
+			imu_msg.orientation.y = sReg[q2];
+			imu_msg.orientation.z = sReg[q3];
+
+			// Angular velocity (рад/с)
+			imu_msg.angular_velocity.x = fGyro[0];
+			imu_msg.angular_velocity.y = fGyro[1];
+			imu_msg.angular_velocity.z = fGyro[2];
+
+			// Linear acceleration (м/с²)
+			imu_msg.linear_acceleration.x = fAcc[0];
+			imu_msg.linear_acceleration.y = fAcc[1];
+			imu_msg.linear_acceleration.z = fAcc[2];
+
+			// Publish
 			s_cDataUpdate = 0;
 		}
+		RCSOFTCHECK(rcl_publish(&pub_imu, &imu_msg, NULL));
 	}
+}
+
+void temp_callback(rcl_timer_t *, int64_t)
+{
+	static int temp = 25;
+	temp_msg.data = temp++;
+	RCSOFTCHECK(rcl_publish(&pub_temp, &temp_msg, NULL));
 }
 
 static void SensorUartSend(uint8_t *p_data, uint32_t uiSize)
@@ -167,41 +159,40 @@ static void AutoScanSensor(void)
 void setup()
 {
 	Serial.begin(115200);
+
 	set_microros_serial_transports(Serial);
+
 	pinMode(LED_PIN, OUTPUT);
 	digitalWrite(LED_PIN, HIGH);
 
 	delay(2000);
 
-	allocator = rcl_get_default_allocator();
+	set_microros_serial_transports(Serial);
 
-	// create init_options
+	allocator = rcl_get_default_allocator();
 	RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
 
-	// create node
-	RCCHECK(rclc_node_init_default(&node, "esp32_sensors_node", "", &support));
+	RCCHECK(rclc_node_init_default(&node, "esp32_node", "", &support));
 
-	// create publisher
-	RCCHECK(rclc_publisher_init_best_effort(&publisher, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "sensors/imu"));
+	RCCHECK(rclc_publisher_init_default(
+		&pub_imu, &node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
+		"/imu/data"));
 
-	const char* frame_id = "imu_link";
-	size_t len = strlen(frame_id);
-	imu_msg.header.frame_id.data = (char*)malloc(len + 1);
-	imu_msg.header.stamp.sec = 0;
-	imu_msg.header.stamp.nanosec = 0;
-    strcpy(imu_msg.header.frame_id.data, "imu_link");
-    imu_msg.header.frame_id.size = strlen(imu_msg.header.frame_id.data);
-    imu_msg.header.frame_id.capacity = imu_msg.header.frame_id.size + 1;
+	RCCHECK(rclc_publisher_init_default(
+		&pub_temp, &node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+		"/temperature"));
 
-	// create timer,
-	const unsigned int timer_timeout = 1000;
-	RCCHECK(rclc_timer_init_default(&timer, &support, RCL_MS_TO_NS(timer_timeout), timer_callback));
+	RCCHECK(rclc_timer_init_default(
+		&timer_imu, &support, RCL_MS_TO_NS(1000), imu_callback));
 
-	// create executor
-	RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
-	RCCHECK(rclc_executor_add_timer(&executor, &timer));
+	RCCHECK(rclc_timer_init_default(
+		&timer_temp, &support, RCL_MS_TO_NS(2000), temp_callback));
 
-	// msg.data = 0;
+	RCCHECK(rclc_executor_init(&executor, &support.context, 2, &allocator));
+	RCCHECK(rclc_executor_add_timer(&executor, &timer_imu));
+	RCCHECK(rclc_executor_add_timer(&executor, &timer_temp));
 
 	WitInit(WIT_PROTOCOL_NORMAL, 0x50);
 	WitSerialWriteRegister(SensorUartSend);
@@ -210,20 +201,13 @@ void setup()
 	AutoScanSensor();
 }
 
-
-
 void loop()
 {
-	delay(100);
+	delay(10);
 	RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
 
 	while (Serial1.available())
 	{
 		WitSerialDataIn(Serial1.read());
 	}
-}
-
-
-void sensors_loop(){
-
 }

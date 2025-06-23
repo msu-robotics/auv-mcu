@@ -5,6 +5,8 @@
 #include <rclc/executor.h>
 
 #include <sensor_msgs/msg/imu.h>
+#include <sensor_msgs/msg/magnetic_field.h>
+#include <sensor_msgs/msg/fluid_pressure.h>
 #include <std_msgs/msg/int32.h>
 
 #include <REG.h>
@@ -38,16 +40,21 @@ rcl_node_t node;
 
 // Publishers
 rcl_publisher_t pub_imu;
+rcl_publisher_t pub_magnetic;
+rcl_publisher_t pub_fluid_pressure;
 rcl_publisher_t pub_temp;
 
 // Timers
 rcl_timer_t timer_imu;
+rcl_timer_t timer_fluid_pressure;
 rcl_timer_t timer_temp;
 
 rclc_executor_t executor;
 
 // Messages
 sensor_msgs__msg__Imu imu_msg;
+sensor_msgs__msg__MagneticField magnetic_msg;
+sensor_msgs__msg__FluidPressure fluid_pressure_msg;
 std_msgs__msg__Int32 temp_msg;
 
 void error_loop()
@@ -134,6 +141,24 @@ void imu_callback(rcl_timer_t *timer, int64_t last_call_time)
 		imu_msg.linear_acceleration_covariance[6] = 0.0;
 		imu_msg.linear_acceleration_covariance[7] = 0.0;
 		imu_msg.linear_acceleration_covariance[8] = acc_covar;
+
+		// Magnetic field (µT)
+		magnetic_msg.magnetic_field.x = fMagnet[0];
+		magnetic_msg.magnetic_field.y = fMagnet[1];
+		magnetic_msg.magnetic_field.z = fMagnet[2];
+
+		const double magnetic_covar = 1.69e-10;
+		magnetic_msg.magnetic_field_covariance[0] = magnetic_covar;
+		magnetic_msg.magnetic_field_covariance[1] = 0.0;
+		magnetic_msg.magnetic_field_covariance[2] = 0.0;
+
+		magnetic_msg.magnetic_field_covariance[3] = 0.0;
+		magnetic_msg.magnetic_field_covariance[4] = magnetic_covar;
+		magnetic_msg.magnetic_field_covariance[5] = 0.0;
+
+		magnetic_msg.magnetic_field_covariance[6] = 0.0;
+		magnetic_msg.magnetic_field_covariance[7] = 0.0;
+		magnetic_msg.magnetic_field_covariance[8] = magnetic_covar;
 
 	}
 	RCSOFTCHECK(rcl_publish(&pub_imu, &imu_msg, NULL));
@@ -248,13 +273,23 @@ void setup()
 		"/sensors/imu"));
 
 	RCCHECK(rclc_publisher_init_default(
+		&pub_magnetic, &node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, MagneticField),
+		"/sensors/magnetic"));
+
+	RCCHECK(rclc_publisher_init_default(
+		&pub_fluid_pressure, &node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, FluidPressure),
+		"/sensors/fluid_pressure"));
+
+	RCCHECK(rclc_publisher_init_default(
 		&pub_temp, &node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
 		"/sensors/temperature"));
 
 	// initialize imu timer
 	RCCHECK(rclc_timer_init_default(
-		&timer_imu, &support, RCL_MS_TO_NS(100), imu_callback));
+		&timer_imu, &support, RCL_MS_TO_NS(50), imu_callback));
 
 	RCCHECK(rclc_timer_init_default(
 		&timer_temp, &support, RCL_MS_TO_NS(2000), temp_callback));

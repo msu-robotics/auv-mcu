@@ -5,6 +5,7 @@
 #include <rclc/executor.h>
 
 #include <sensor_msgs/msg/imu.h>
+#include <sensor_msgs/msg/temperature.h>
 #include <sensor_msgs/msg/magnetic_field.h>
 #include <sensor_msgs/msg/fluid_pressure.h>
 #include <std_msgs/msg/int32.h>
@@ -55,6 +56,7 @@ rclc_executor_t executor;
 sensor_msgs__msg__Imu imu_msg;
 sensor_msgs__msg__MagneticField magnetic_msg;
 sensor_msgs__msg__FluidPressure fluid_pressure_msg;
+sensor_msgs__msg__Temperature fluid_temperature_msg;
 std_msgs__msg__Int32 temp_msg;
 
 void error_loop()
@@ -162,6 +164,7 @@ void imu_callback(rcl_timer_t *timer, int64_t last_call_time)
 
 	}
 	RCSOFTCHECK(rcl_publish(&pub_imu, &imu_msg, NULL));
+	RCSOFTCHECK(rcl_publish(&pub_magnetic, &magnetic_msg, NULL));
 }
 
 void blink_led(int8_t blink_num) {

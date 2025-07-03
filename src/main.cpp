@@ -14,9 +14,10 @@
 #include <wit_c_sdk.h>
 
 static volatile char s_cDataUpdate = 0;
-static volatile char s_initialized = 0;
+bool s_cInitialized = false;
 
 #define LED_PIN 2
+#define DEBUG true
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
 
@@ -29,7 +30,7 @@ static volatile char s_initialized = 0;
 static void SensorUartSend(uint8_t *p_data, uint32_t uiSize);
 static void SensorDataUpdata(uint32_t uiReg, uint32_t uiRegNum);
 static void Delayms(uint16_t ucMs);
-const uint32_t c_uiBaud[8] = {0,4800, 9600, 19200, 38400, 57600, 115200, 230400};
+const uint32_t c_uiBaud[8] = {0, 4800, 9600, 19200, 38400, 57600, 115200, 230400};
 
 void sensorTask(void *param);
 void rosExecutorTask(void *param);
@@ -39,28 +40,34 @@ rcl_allocator_t allocator;
 rclc_support_t support;
 rcl_node_t node;
 
-// Publishers
 rcl_publisher_t pub_imu;
 rcl_publisher_t pub_magnetic;
 rcl_publisher_t pub_fluid_pressure;
 rcl_publisher_t pub_temp;
 
-// Timers
 rcl_timer_t timer_imu;
 rcl_timer_t timer_fluid_pressure;
 rcl_timer_t timer_temp;
 
 rclc_executor_t executor;
 
-// Messages
 sensor_msgs__msg__Imu imu_msg;
 sensor_msgs__msg__MagneticField magnetic_msg;
 sensor_msgs__msg__FluidPressure fluid_pressure_msg;
 sensor_msgs__msg__Temperature fluid_temperature_msg;
 std_msgs__msg__Int32 temp_msg;
 
+
+void uart_debug(const char *debug) {
+
+	Serial2.println(debug);
+
+}
+
+
 void error_loop()
 {
+	uart_debug("Something went wrong");
 	while (1)
 	{
 		blink_led(3);
@@ -72,7 +79,7 @@ void imu_callback(rcl_timer_t *timer, int64_t last_call_time)
 {
 	RCLC_UNUSED(last_call_time);
 
-	if (s_cDataUpdate & s_initialized)
+	if (s_cDataUpdate & s_cInitialized)
 	{
 		float fAcc[3], fGyro[3], fAngle[3], fMagnet[3], fQ[4];
 
@@ -161,14 +168,15 @@ void imu_callback(rcl_timer_t *timer, int64_t last_call_time)
 		magnetic_msg.magnetic_field_covariance[6] = 0.0;
 		magnetic_msg.magnetic_field_covariance[7] = 0.0;
 		magnetic_msg.magnetic_field_covariance[8] = magnetic_covar;
-
 	}
 	RCSOFTCHECK(rcl_publish(&pub_imu, &imu_msg, NULL));
 	RCSOFTCHECK(rcl_publish(&pub_magnetic, &magnetic_msg, NULL));
 }
 
-void blink_led(int8_t blink_num) {
-	for (int i = 0; i < blink_num; i++){
+void blink_led(int8_t blink_num)
+{
+	for (int i = 0; i < blink_num; i++)
+	{
 		delay(100);
 		digitalWrite(LED_PIN, !digitalRead(LED_PIN));
 		delay(100);
@@ -185,8 +193,8 @@ void temp_callback(rcl_timer_t *, int64_t)
 
 static void SensorUartSend(uint8_t *p_data, uint32_t uiSize)
 {
-	Serial2.write(p_data, uiSize);
-	Serial2.flush();
+	Serial1.write(p_data, uiSize);
+	Serial1.flush();
 }
 
 static void Delayms(uint16_t ucMs)
@@ -196,7 +204,8 @@ static void Delayms(uint16_t ucMs)
 
 static void SensorDataUpdata(uint32_t uiReg, uint32_t uiRegNum)
 {
-	for (int i = 0; i < uiRegNum; i++)
+	int i;
+	for (i = 0; i < uiRegNum; i++)
 	{
 		switch (uiReg)
 		{
@@ -222,35 +231,70 @@ static void SensorDataUpdata(uint32_t uiReg, uint32_t uiRegNum)
 
 static void AutoScanSensor(void)
 {
-	Serial2.begin(9600, SERIAL_8N1, 27, 26);
-	Serial2.flush();
 	int i, iRetry;
-	iRetry = 2;
-	s_cDataUpdate = 0;
-	do
+
+	for (i = 0; i < sizeof(c_uiBaud) / sizeof(c_uiBaud[0]); i++)
 	{
-		WitReadReg(AX, 3);
-		delay(200);
-		while (Serial2.available())
-		{
-			WitSerialDataIn(Serial2.read());
-		}
-		if(s_cDataUpdate != 0)
-		{
-			blink_led(1);
-			s_initialized = 1;
-			return;
-		}
-		iRetry--;
-	} while (iRetry);
-	blink_led(3);
+
+		char buffer[100];
+		sprintf(buffer, "Autoscan sensor on  %d  baud rate", c_uiBaud[i]);
+		uart_debug(buffer);
+
+		Serial1.begin(c_uiBaud[i], SERIAL_8N1, 27, 26);
+		Serial1.flush();
+		iRetry = 2;
+		s_cDataUpdate = 0;
+
+		uart_debug(" - init done");
+
+		do{
+			int is_available = Serial1.available();
+
+			if (is_available)
+			{
+				uart_debug("Serial available, retry ");
+			}
+			else
+			{
+				uart_debug("Serial is not available, retry ");
+			}
+
+
+			WitReadReg(AX, 3);
+			delay(400);
+			while (is_available)
+			{
+				char u = Serial1.read();
+
+				WitSerialDataIn(u);
+
+				is_available = Serial1.available();
+			}
+			Serial2.println();
+
+			if (s_cDataUpdate != 0)
+			{
+				char buffer[50];
+				sprintf(buffer, "%d  baud find sensor ✅", c_uiBaud[i]);
+				uart_debug(buffer);
+
+				s_cInitialized = true;
+				return;
+			}
+			iRetry--;
+		} while (iRetry);
+	}
+	uart_debug("IMU autoscan - ❌");
 }
 
 void setup()
 {
 	Serial.begin(115200);
+	Serial2.begin(115200, SERIAL_8N1);
+	uart_debug("MCU setup ...");
 
 	set_microros_serial_transports(Serial);
+	uart_debug("ROS Transport - ✅");
 
 	pinMode(LED_PIN, OUTPUT);
 	digitalWrite(LED_PIN, HIGH);
@@ -261,12 +305,18 @@ void setup()
 
 	delay(1000);
 
-	set_microros_serial_transports(Serial);
+	uart_debug("IMU setup ...");
+	WitInit(WIT_PROTOCOL_NORMAL, 0x50);
+	WitSerialWriteRegister(SensorUartSend);
+	WitRegisterCallBack(SensorDataUpdata);
+	WitDelayMsRegister(Delayms);
+	AutoScanSensor();
 
 	allocator = rcl_get_default_allocator();
 	RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
 
 	// Create node
+	uart_debug("ROS node creation");
 	RCCHECK(rclc_node_init_default(&node, "esp32_node", "", &support));
 
 	// Create imu publisher
@@ -301,39 +351,47 @@ void setup()
 	RCCHECK(rclc_executor_add_timer(&executor, &timer_imu));
 	RCCHECK(rclc_executor_add_timer(&executor, &timer_temp));
 
-	WitInit(WIT_PROTOCOL_NORMAL, 0x50);
-	WitSerialWriteRegister(SensorUartSend);
-	WitRegisterCallBack(SensorDataUpdata);
-	WitDelayMsRegister(Delayms);
-
 	delay(500);
 	blink_led(2);
 	delay(500);
 
-	AutoScanSensor();
-
 	// Create tasks
-	xTaskCreatePinnedToCore(sensorTask, "Sensor Reader", 4096, NULL, 1, NULL, 0);
-	xTaskCreatePinnedToCore(rosExecutorTask, "Printer Task", 2048, NULL, 1, NULL, 1);
+	xTaskCreatePinnedToCore(sensorTask, "Sensor reader task", 2048, NULL, 1, NULL, 1);
+	xTaskCreatePinnedToCore(rosExecutorTask, "Ros executor Task", 2048, NULL, 1, NULL, 0);
+
+	uart_debug("MCU setup done");
 }
+
+unsigned long lastPrintTime = 0;
+unsigned long lastPrintTime2 = 0;
+const unsigned long printInterval = 1000; // 1000 мс = 1 секунда
 
 void sensorTask(void *param)
 {
+	uart_debug("Sensor task started");
+
 	while (true)
 	{
 		vTaskDelay(pdMS_TO_TICKS(5));
 
-		while (Serial2.available())
+		unsigned long currentTime = millis();
+
+		if (s_cInitialized == true)
 		{
-			WitSerialDataIn(Serial2.read());
+			while (Serial1.available() && s_cInitialized)
+			{
+				WitSerialDataIn(Serial1.read());
+			}
 		}
 	}
 }
 
-
 void rosExecutorTask(void *param)
 {
-	while (true){
+	uart_debug("ROS task started");
+
+	while (true)
+	{
 		vTaskDelay(pdMS_TO_TICKS(10));
 		RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
 	}

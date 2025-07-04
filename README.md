@@ -24,13 +24,12 @@
 Запусти локальный образ:
 
 ```shell
-docker run --rm -it \
+docker run -it \
   --name ros2-humble-dev-container \
-  --env="DISPLAY=host.docker.internal:0" \
-  --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" \
+  --privileged \
   -v ros2_ws:/root/ros2_ws \
   -v microros_ws:/root/microros_ws \
-  -v /dev/ttyUSB0:/dev/ttyUSB0 \
+  -v /dev:/dev \
   osrf/ros:humble-desktop
 ```
 

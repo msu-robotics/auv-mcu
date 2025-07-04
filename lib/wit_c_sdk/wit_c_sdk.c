@@ -92,11 +92,11 @@ static void CopeWitData(uint8_t ucIndex, uint16_t *p_data, uint32_t uiLen)
     uint32_t uiReg1 = 0, uiReg2 = 0, uiReg1Len = 0, uiReg2Len = 0;
     uint16_t *p_usReg1Val = p_data;
     uint16_t *p_usReg2Val = p_data+3;
-    
+
     uiReg1Len = 4;
     switch(ucIndex)
     {
-        case WIT_ACC:   uiReg1 = AX;    uiReg1Len = 3;  uiReg2 = TEMP;  uiReg2Len = 1;  break;
+        case WIT_ACC:   uiReg1 = AX;    uiReg1Len = 3;  uiReg2 = TEMP_REG;  uiReg2Len = 1;  break;
         case WIT_ANGLE: uiReg1 = Roll;  uiReg1Len = 3;  uiReg2 = VERSION;  uiReg2Len = 1;  break;
         case WIT_TIME:  uiReg1 = YYMM;	break;
         case WIT_GYRO:  uiReg1 = GX;  uiLen = 3;break;
@@ -283,8 +283,8 @@ int32_t WitWriteReg(uint32_t uiReg, uint16_t usData)
 				//printf("i2c write fail\r\n");
 			}
         break;
-	default: 
-            return WIT_HAL_INVAL;        
+	default:
+            return WIT_HAL_INVAL;
     }
     return WIT_HAL_OK;
 }
@@ -343,9 +343,9 @@ int32_t WitReadReg(uint32_t uiReg, uint32_t uiReadNum)
                 }
                 p_WitRegUpdateCbFunc(uiReg, uiReadNum);
             }
-			
+
             break;
-		default: 
+		default:
             return WIT_HAL_INVAL;
     }
     s_uiReadRegIndex = uiReg;
@@ -455,7 +455,7 @@ int32_t WitSetCanBaud(int32_t uiBaudIndex)
 }
 /*change Bandwidth*/
 int32_t WitSetBandwidth(int32_t uiBaudWidth)
-{	
+{
 	if(!CheckRange(uiBaudWidth,BANDWIDTH_256HZ,BANDWIDTH_5HZ))
 	{
 		return WIT_HAL_INVAL;
@@ -470,7 +470,7 @@ int32_t WitSetBandwidth(int32_t uiBaudWidth)
 
 /*change output rate */
 int32_t WitSetOutputRate(int32_t uiRate)
-{	
+{
 	if(!CheckRange(uiRate,RRATE_02HZ,RRATE_NONE))
 	{
 		return WIT_HAL_INVAL;
@@ -485,7 +485,7 @@ int32_t WitSetOutputRate(int32_t uiRate)
 
 /*change WitSetContent */
 int32_t WitSetContent(int32_t uiRsw)
-{	
+{
 	if(!CheckRange(uiRsw,RSW_TIME,RSW_MASK))
 	{
 		return WIT_HAL_INVAL;

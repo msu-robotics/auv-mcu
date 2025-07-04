@@ -71,7 +71,7 @@ extern "C" {
 #define Roll			    0x3d
 #define Pitch			    0x3e
 #define Yaw				    0x3f
-#define TEMP			    0x40
+#define TEMP_REG		    0x40
 #define D0Status		    0x41
 #define D1Status		    0x42
 #define D2Status		    0x43
@@ -126,15 +126,15 @@ extern "C" {
 #define MODDELAY            0x74
 
 #define ANGLEAXIS           0x75
-#define XRSCALE			    0x76    
+#define XRSCALE			    0x76
 #define YRSCALE			    0x77
 #define ZRSCALE			    0x78
 
-#define XREFROLL		    0x79    
+#define XREFROLL		    0x79
 #define YREFPITCH		    0x7a
 #define ZREFYAW			    0x7b
 
-#define ANGXOFFSET		    0x7c    
+#define ANGXOFFSET		    0x7c
 #define ANGYOFFSET		    0x7d
 #define ANGZOFFSET		    0x7e
 
@@ -156,7 +156,7 @@ extern "C" {
 
 #define CHIPIDL             0x8D
 #define CHIPIDH             0x8E
-#define REGINITFLAG         REGSIZE-1 
+#define REGINITFLAG         REGSIZE-1
 
 
 /* AXIS6 */

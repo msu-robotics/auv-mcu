@@ -16,22 +16,32 @@ static void sensorDataUpdata(uint32_t uiReg, uint32_t uiRegNum);
 static void delayMs(uint16_t ucMs);
 
 bool imu_initialized = false;
+bool depth_sensor_available = false;
 volatile char imu_data_updated = 0;
 const uint32_t imu_speed[8] = {0, 4800, 9600, 19200, 38400, 57600, 115200, 230400};
 
 MS5837 depth_sensor;
 
+
 void initDepthSensor() {
+  const int max_attempts = 3;
+  int attempts = 0;
 
-	while (!depth_sensor.init()) {
-		uartDebug("❌Depth sensor init failed");
-		delay(5000);
-	}
+  while (attempts < max_attempts && !depth_sensor.init()) {
+    uartDebug("❌ Depth sensor init failed");
+    attempts++;
+    delay(2000);
+  }
 
-	uartDebug("✅Depth sensor initialized");
-
-	depth_sensor.setModel(MS5837::MS5837_30BA);
-	depth_sensor.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
+  if (attempts < max_attempts) {
+    uartDebug("✅ Depth sensor initialized");
+    depth_sensor.setModel(MS5837::MS5837_30BA);
+    depth_sensor.setFluidDensity(997); // freshwater; use 1029 for seawater
+    depth_sensor_available = true;
+  } else {
+    uartDebug("⚠️ Depth sensor unavailable — running without it");
+    depth_sensor_available = false;
+  }
 }
 
 static void sensorUartSend(uint8_t *p_data, uint32_t uiSize)
@@ -126,6 +136,9 @@ static void autoScanSensor(void)
 	uartDebug("❌IMU autoscan failed");
 }
 
+void processThrusters(){
+
+}
 
 void initIMU(){
     uartDebug("ℹ️ Initialize IMU start");
@@ -162,8 +175,10 @@ void sensorTask(void *param)
 				uartDebug("❌IMU not initialized, please check connection");
 			}
 		}
+		if (depth_sensor_available == true){
+			depth_sensor.read();
+		}
 
-		depth_sensor.read();
 	}
 }
 

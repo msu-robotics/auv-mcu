@@ -2,7 +2,7 @@
 #define UTILS
 
 void uartDebug(const char *debug);
-void fillArray(float* out, int offset, int count, float scale = 1.0f);
+void fillArray(float *in, float *out, int count, float scale = 1.0f);
 void fillCovariance(double* cov, double value);
 
 template<typename Vec3>
@@ -19,5 +19,18 @@ void fillQuaternion(Quaternion& q, const float* data) {
 	q.y = data[2];
 	q.z = data[3];
 }
+
+class Blinker {
+	int led_pin;
+	int blink_delay_ms;
+
+	public:
+	void init();
+
+	void blink(int);
+
+	private:
+		bool initialized;
+};
 
 #endif

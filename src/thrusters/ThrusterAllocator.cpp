@@ -1,4 +1,4 @@
-#include "ThrusterAllocator.h"
+#include "thrusterAllocator.h"
 #include "utils.h"
 
 ThrusterAllocator::ThrusterAllocator(int num_dof)
@@ -16,7 +16,7 @@ void ThrusterAllocator::setThrusters(const std::vector<Thruster*>& thrusters) {
 
 void ThrusterAllocator::setAllocationMatrix(const std::vector<std::vector<float>>& matrix) {
     if (matrix.size() != _thrusters.size() || matrix[0].size() != _num_dof) {
-        uartDebug("❌ [Allocator] Matrix size mismatch");
+        uartDebug("❌[Allocator] Matrix size mismatch");
         return;
     }
     _allocation_matrix = matrix;
@@ -33,7 +33,10 @@ void ThrusterAllocator::setReverseFlags(const std::vector<bool>& reverse) {
 }
 
 void ThrusterAllocator::allocate(const std::vector<float>& wrench) {
-    if (wrench.size() != _num_dof) return;
+    if (wrench.size() != _num_dof) {
+        uartDebug("❌[Allocator] Incorrect wrench size");
+        return;
+    }
 
     for (size_t i = 0; i < _thrusters.size(); ++i) {
         float output = 0.0f;
@@ -46,9 +49,22 @@ void ThrusterAllocator::allocate(const std::vector<float>& wrench) {
 
         output = saturate(output);
         _thrusters[i]->setPower(output);
+        // char buffer[70];
+        // sprintf(buffer, "ℹ️  [Allocator] set truster:%d force:%.2f", i, output);
+        // uartDebug(buffer);
     }
 }
 
+void ThrusterAllocator::setThrusterPowerManual(uint8_t thruster, float power) {
+    char buffer[70];
+    sprintf(buffer, "ℹ️ [Allocator] set truster:%d power:%.2f", thruster, power);
+    uartDebug(buffer);
+    power *= _correction_factors[thruster];
+    if (_reverse_flags[thruster]) power *= -1.0f;
+    power = saturate(power);
+    _thrusters[thruster]->setPower(power);
+
+}
 float ThrusterAllocator::saturate(float value, float min_val, float max_val) const {
     if (value > max_val) return max_val;
     if (value < min_val) return min_val;

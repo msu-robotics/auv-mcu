@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <utils.h>
-#include "sensor_tasks.h"
+#include "sensor.h"
 #include <Wire.h>
 #include "MS5837.h"
 
@@ -136,9 +136,6 @@ static void autoScanSensor(void)
 	uartDebug("❌IMU autoscan failed");
 }
 
-void processThrusters(){
-
-}
 
 void initIMU(){
     uartDebug("ℹ️ Initialize IMU start");

@@ -10,6 +10,7 @@ public:
     void setAllocationMatrix(const std::vector<std::vector<float>>& matrix);
     void setCorrectionFactors(const std::vector<float>& factors);
     void setReverseFlags(const std::vector<bool>& reverse);
+    void setThrusterPowerManual(uint8_t thruster,float power);
 
     void allocate(const std::vector<float>& wrench); // Fx, Fy, Fz, Mz...
 
@@ -20,5 +21,5 @@ private:
     std::vector<float> _correction_factors;
     std::vector<bool> _reverse_flags;
 
-    float saturate(float value, float min_val = -1.0f, float max_val = 1.0f) const;
+    float saturate(float value, float min_val = -100.0f, float max_val = 100.0f) const;
 };

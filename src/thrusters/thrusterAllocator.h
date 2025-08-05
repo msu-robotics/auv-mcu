@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include "Thruster.h"
+#include "thruster.h"
 
 class ThrusterAllocator {
 public:

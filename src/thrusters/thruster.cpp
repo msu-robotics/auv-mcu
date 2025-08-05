@@ -1,4 +1,4 @@
-#include "Thruster.h"
+#include "thruster.h"
 
 Thruster::Thruster(uint8_t pin, uint8_t channel, int neutral_us, int min_us, int max_us)
     : _pin(pin), _channel(channel),

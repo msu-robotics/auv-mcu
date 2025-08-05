@@ -25,6 +25,8 @@ public:
         sprintf(buffer, "ℹ️ MS5837 initialize sda: %d scl: %d", sda, scl);
         uartDebug(buffer);
 
+        Wire.begin(sda, scl);
+
         const int max_attempts = 3;
         int attempts = 0;
 

@@ -49,9 +49,6 @@ void ThrusterAllocator::allocate(const std::vector<float>& wrench) {
 
         output = saturate(output);
         _thrusters[i]->setPower(output);
-        // char buffer[70];
-        // sprintf(buffer, "ℹ️  [Allocator] set truster:%d force:%.2f", i, output);
-        // uartDebug(buffer);
     }
 }
 

@@ -192,8 +192,9 @@ void setup()
 	set_microros_serial_transports(Serial);
 
 	delay(1000);
-	uartDebug("ℹ️ setup ros sallocator");
+	uartDebug("ℹ️ setup ros allocator");
 	rcl_allocator = rcl_get_default_allocator();
+	uartDebug("ℹ️ check ros allocator");
 	RCCHECK(rclc_support_init(&support, 0, NULL, &rcl_allocator));
 
 	// Create node

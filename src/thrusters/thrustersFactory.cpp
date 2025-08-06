@@ -5,7 +5,7 @@
 
 ThrusterAllocator* createThrusterAllocator() {
 
-    ThrustersPins pins = {{14, 27, 26, 25, 33}};
+    ThrustersPins pins = {{21, 22, 19, 18, 5}};
 
     Thruster* thrusters[5];
     Thruster* thruster_ptrs[5];

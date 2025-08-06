@@ -17,7 +17,7 @@ class MS5837Provider : public IDepthProvider, public ITemperatureProvider {
     uint8_t data_is_actual = 0;
 
 public:
-    MS5837Provider(int sda_pin = 33, int scl_pin = 32)
+    MS5837Provider(int sda_pin = 21, int scl_pin = 22)
         : sda(sda_pin), scl(scl_pin) {}
 
     bool begin() override {
@@ -25,7 +25,7 @@ public:
         sprintf(buffer, "ℹ️ MS5837 initialize sda: %d scl: %d", sda, scl);
         uartDebug(buffer);
 
-        Wire.begin(sda, scl);
+        // Wire.begin(sda, scl);
 
         const int max_attempts = 3;
         int attempts = 0;

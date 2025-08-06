@@ -194,7 +194,7 @@ void setup()
 	delay(1000);
 	uartDebug("ℹ️ setup ros allocator");
 	rcl_allocator = rcl_get_default_allocator();
-	uartDebug("ℹ️ check ros allocator");
+	Serial2.printf("ℹ️ check ros allocator, free memory: %d\n", esp_get_free_heap_size());
 	RCCHECK(rclc_support_init(&support, 0, NULL, &rcl_allocator));
 
 	// Create node

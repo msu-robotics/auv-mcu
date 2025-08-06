@@ -17,7 +17,7 @@ class MS5837Provider : public IDepthProvider, public ITemperatureProvider {
     uint8_t data_is_actual = 0;
 
 public:
-    MS5837Provider(int sda_pin = 33, int scl_pin = 22)
+    MS5837Provider(int sda_pin = 33, int scl_pin = 32)
         : sda(sda_pin), scl(scl_pin) {}
 
     bool begin() override {

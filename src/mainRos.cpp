@@ -188,11 +188,11 @@ void setup()
 	imu = createIMU();
 	depth = createDepthSensor();
 	tAllocator = createThrusterAllocator();
-
+	uartDebug("ℹ️ setup ros serial");
 	set_microros_serial_transports(Serial);
 
 	delay(1000);
-
+	uartDebug("ℹ️ setup ros sallocator");
 	rcl_allocator = rcl_get_default_allocator();
 	RCCHECK(rclc_support_init(&support, 0, NULL, &rcl_allocator));
 

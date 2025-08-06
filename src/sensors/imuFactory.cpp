@@ -12,7 +12,7 @@ ModularIMU* createIMU() {
         imu->setQuaternionProvider(static_cast<IQuaternionProvider*>(mpu));
     #elif defined(IMU_HWT905)
         Serial.println("ℹ️ Using HWT905 IMU driver");
-        auto mpu = new HWT905Provider(25, 26);
+        auto mpu = new HWT905Provider(26, 27);
         imu->setAccelProvider(static_cast<IAccelProvider*>(mpu));
         imu->setAngularVelProvider(static_cast<IAngleVelocityProvider*>(mpu));
         imu->setQuaternionProvider(static_cast<IQuaternionProvider*>(mpu));

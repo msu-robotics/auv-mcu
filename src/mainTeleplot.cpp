@@ -6,17 +6,20 @@
 #include "sensors/imu/factory.h"
 #include "sensors/depth/factory.h"
 #include "sensors/pressure/factory.h"
+#include "sensors/power/factory.h"
 
 
 ModularIMU* imu;
 ModularDepthSensor* depth;
 ModularPressureSensor* press;
+ModularPowerSensor* power;
 
 void setup() {
     Serial.begin(115200);
     imu = createIMU();
     depth = createDepthSensor();
     press = createPressureSensor();
+    power = createPowerSensor();
 }
 
 void loop() {
@@ -45,9 +48,14 @@ void loop() {
         Serial.println(">depthName:MS5837|t");
     #endif
     // Pressure Driver name
-    #if defined(PRESS_BMP180)
+    #if defined(PRESS_BMP280)
         #define PRESS
-        Serial.println(">pressName:BMP180|t");
+        Serial.println(">pressName:BMP280|t");
+    #endif
+    // Power driver name
+    #if defined(POWER_ADC)
+        #define POWER
+        Serial.println(">powerName:ADC|t");
     #endif
 
     #if defined(GIT_COMMIT_HASH)
@@ -60,6 +68,7 @@ void loop() {
     IMUData i = imu->read();
     DepthData d = depth->read();
     PressureData p = press->read();
+    PowerData w = power->read();
 
     #if defined(IMU)
         // IMU Acceleration data
@@ -107,6 +116,10 @@ void loop() {
         Serial.print(">pressTemp:");
         Serial.println(p.temperature);
     #endif
-
-    delay(100);
+    #if defined(POWER)
+        Serial.print(">voltage:");
+        Serial.println(w.voltage);
+        Serial.print(">current:");
+        Serial.println(w.current);
+    #endif
 }

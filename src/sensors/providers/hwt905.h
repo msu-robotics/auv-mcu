@@ -7,17 +7,16 @@
 #include <wit_c_sdk.h>
 
 
-#define ACC_UPDATE 0x01
-#define ANGULAR_VEL_UPDATE 0x02
-#define ANGLE_UPDATE 0x04
-#define MAG_UPDATE 0x08
-#define READ_UPDATE 0x80
+#define ACC_IS_ACTUAL 0x01
+#define ANGULAR_VEL_IS_ACTUAL 0x02
+#define ANGLE_IS_ACTUAL 0x04
+#define MAG_IS_ACTUAL 0x08
 
 
 class HWT905Provider : public IAccelProvider, public IMagneticProvider, public IAngleVelocityProvider, public IQuaternionProvider {
     int txPin, rxPin;
     long foundBaud = 0;
-    volatile uint8_t s_cDataUpdate = 0;
+    volatile uint8_t updated_data = 0;
     bool initialized = false;
 
     static HWT905Provider* _instance;
@@ -45,26 +44,26 @@ public:
     }
 
     AccelData readAccel() override {
-        if(not s_cDataUpdate & ACC_UPDATE){
+        if(not (updated_data & ACC_IS_ACTUAL)){
             _updateSensor();
         }
-        s_cDataUpdate &= ~ACC_UPDATE;
+        updated_data &= ~ACC_IS_ACTUAL;
         return { fAcc[0], fAcc[1], fAcc[2] };
     }
 
     AngularVelData readAngularVel() override {
-        if(not s_cDataUpdate & ANGULAR_VEL_UPDATE){
+        if(not (updated_data & ANGULAR_VEL_IS_ACTUAL)){
             _updateSensor();
         }
-        s_cDataUpdate &= ~ANGULAR_VEL_UPDATE;
+        updated_data &= ~ANGLE_IS_ACTUAL;
         return { fGyro[0], fGyro[1], fGyro[2] };
     }
 
     MagneticData readMag() override {
-        if (not s_cDataUpdate & MAG_UPDATE){
+        if (not updated_data & MAG_IS_ACTUAL){
             _updateSensor();
         }
-        s_cDataUpdate &= ~MAG_UPDATE;
+        updated_data &= ~MAG_IS_ACTUAL;
         return { float(sReg[HX]), float(sReg[HY]), float(sReg[HZ]) };
     }
 
@@ -87,7 +86,7 @@ private:
         for (long baud : baudList) {
             Serial1.begin(baud, SERIAL_8N1, rxPin, txPin);
             Serial1.flush();
-            s_cDataUpdate = 0;
+            updated_data = 0;
             int retries = 2;
 
             while (retries--) {
@@ -96,7 +95,7 @@ private:
                 while (Serial1.available()) {
                     WitSerialDataIn(Serial1.read());
                 }
-                if (s_cDataUpdate != 0) {
+                if (updated_data != 0) {
                     foundBaud = baud;
                     initialized = true;
                     char buffer[50];
@@ -118,28 +117,25 @@ private:
         for (uint32_t i = 0; i < count; i++, reg++) {
             switch (reg) {
                 case AZ:
-                    s_cDataUpdate |= ACC_UPDATE;
+                    updated_data |= ACC_IS_ACTUAL;
                     for(int i = 0; i < 3; i++) {
                         fAcc[i] = sReg[AX+i] / 32768.0f * 16.0f;
                     }
                     break;
                 case GZ:
-                    s_cDataUpdate |= ANGULAR_VEL_UPDATE;
+                    updated_data |= ANGULAR_VEL_IS_ACTUAL;
                     for(int i = 0; i < 3; i++) {
 				        fGyro[i] = sReg[GX+i] / 32768.0f * 2000.0f;
 			        }
                     break;
                 case HZ:
-                    s_cDataUpdate |= MAG_UPDATE;
+                    updated_data |= MAG_IS_ACTUAL;
                     break;
                 case Yaw:
-                    s_cDataUpdate |= ANGLE_UPDATE;
+                    updated_data |= ANGLE_IS_ACTUAL;
                     for(int i = 0; i < 3; i++) {
 				        fAngle[i] = sReg[Roll+i] / 32768.0f * 180.0f;
 			        }
-                    break;
-                default:
-                    s_cDataUpdate |= READ_UPDATE;
                     break;
             }
         }

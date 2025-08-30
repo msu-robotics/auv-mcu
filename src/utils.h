@@ -20,17 +20,4 @@ void fillQuaternion(Quaternion& q, const float* data) {
 	q.z = data[3];
 }
 
-class Blinker {
-	int led_pin;
-	int blink_delay_ms;
-
-	public:
-	void init();
-
-	void blink(int);
-
-	private:
-		bool initialized;
-};
-
 #endif

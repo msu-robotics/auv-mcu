@@ -1,12 +1,13 @@
 #pragma once
 
 #include "sensors/depth/modular.h"
+#include "sensors/pressure/modular.h"
 #include <Wire.h>
 #include "utils.h"
 #include <Adafruit_BMP085.h>
 
 
-class BMP180Provider : public IDepthProvider, public ITemperatureProvider {
+class BMP180Provider : public IDepthProvider, public ITemperatureProvider, public IPressureProvider {
     Adafruit_BMP085 sensor;
     int sda, scl;
     bool initialized = false;
@@ -37,6 +38,10 @@ public:
 
     float readDepth() override {
         return sensor.readAltitude();
+    }
+
+    float readPressure() override {
+        return sensor.readPressure();
     }
 
 };

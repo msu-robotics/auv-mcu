@@ -1,18 +1,22 @@
 #include <Arduino.h>
 #include "sensors/imu/modular.h"
 #include "sensors/depth/modular.h"
+#include "sensors/pressure/modular.h"
 #include "utils.h"
-#include "sensors/imuFactory.h"
-#include "sensors/depthFactory.h"
+#include "sensors/imu/factory.h"
+#include "sensors/depth/factory.h"
+#include "sensors/pressure/factory.h"
 
 
 ModularIMU* imu;
 ModularDepthSensor* depth;
+ModularPressureSensor* press;
 
 void setup() {
     Serial.begin(115200);
     imu = createIMU();
     depth = createDepthSensor();
+    press = createPressureSensor();
 }
 
 void loop() {
@@ -40,6 +44,11 @@ void loop() {
         #define DEPTH
         Serial.println(">depthName:MS5837|t");
     #endif
+    // Pressure Driver name
+    #if defined(PRESS_BMP180)
+        #define PRESS
+        Serial.println(">pressName:BMP180|t");
+    #endif
 
     #if defined(GIT_COMMIT_HASH)
         Serial.print(">gitHash:");
@@ -50,6 +59,7 @@ void loop() {
 
     IMUData i = imu->read();
     DepthData d = depth->read();
+    PressureData p = press->read();
 
     #if defined(IMU)
         // IMU Acceleration data
@@ -88,8 +98,14 @@ void loop() {
     #if defined(DEPTH)
         Serial.print(">depth:");
         Serial.println(d.depth);
-        Serial.print(">temperature:");
+        Serial.print(">depthTemp:");
         Serial.println(d.temperature);
+    #endif
+    #if defined(PRESS)
+        Serial.print(">press:");
+        Serial.println(p.pressure);
+        Serial.print(">pressTemp:");
+        Serial.println(p.temperature);
     #endif
 
     delay(100);

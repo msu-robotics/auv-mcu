@@ -1,6 +1,7 @@
 #pragma once
 #include "interface.h"
 #include "parts.h"
+#include "sensors/common/temperatureProvider.h"
 
 class ModularDepthSensor : public DepthSensor {
     IDepthProvider* depth = nullptr;

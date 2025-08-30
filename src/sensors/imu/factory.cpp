@@ -1,4 +1,4 @@
-#include "imuFactory.h"
+#include "factory.h"
 #include "utils.h"
 
 ModularIMU* createIMU() {

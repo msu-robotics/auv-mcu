@@ -54,19 +54,3 @@
 #if (DEPTH_SELECTED_2 + DEPTH_SELECTED_1) > 1
   #error "❌ Multiple DEPTH selected. Please define only one -DDEPTH_... flag"
 #endif
-
-#if defined(TEMP_BMP180)
-  #define TEMP_SELECTED_1 1
-#else
-  #define TEMP_SELECTED_1 0
-#endif
-
-#if defined(TEMP_MS5837)
-  #define TEMP_SELECTED_2 1
-#else
-  #define TEMP_SELECTED_2 0
-#endif
-
-#if (TEMP_SELECTED_2 + TEMP_SELECTED_1) > 1
-  #error "❌ Multiple TEMP selected. Please define only one -DTEMP_... flag"
-#endif

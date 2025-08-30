@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include "sensors/imu/modular.h"
 #include "utils.h"
-#include "sensors/imuFactory.h"
-#include "sensors/depthFactory.h"
+#include "sensors/imu/factory.h"
+#include "sensors/depth/factory.h"
 #include <micro_ros_platformio.h>
 #include <rcl/rcl.h>
 #include <rclc/rclc.h>

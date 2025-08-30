@@ -36,7 +36,7 @@ public:
     void setTemperatureProvider(ITemperatureProvider* newTemp, bool destroyOld = true) {
         if (destroyOld && temp) delete temp;
         temp = newTemp;
-        if (temp) depth->begin();
+        if (temp) temp->begin();
     }
 
     void setDepthProvider(IDepthProvider* newDepth, bool destroyOld = true) {

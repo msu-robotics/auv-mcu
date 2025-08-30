@@ -1,4 +1,5 @@
 #include "factory.h"
+#include "sensors/common/temperatureProvider.h"
 #include "utils.h"
 
 
@@ -9,14 +10,12 @@ ModularDepthSensor* createDepthSensor() {
         Serial.println("ℹ️ Using BMP180 depth driver");
         auto unit = new BMP180Provider();
         sensor->setDepthProvider(static_cast<IDepthProvider*>(unit));
-        auto temp = new BMP180Provider();
-        sensor->setTemperatureProvider(static_cast<ITemperatureProvider*>(temp));
+        sensor->setTemperatureProvider(static_cast<ITemperatureProvider*>(unit));
     #elif defined(DEPTH_MS5837)
         Serial.println("ℹ️ Using MS5837 depth driver");
         auto unit = new MS5837Provider();
         sensor->setTemperatureProvider(static_cast<ITemperatureProvider*>(unit));
-        auto temp = new MS5837Provider();
-        sensor->setDepthProvider(static_cast<IDepthProvider*>(temp));
+        sensor->setDepthProvider(static_cast<IDepthProvider*>(unit));
     #else
         Serial.println("❌DEPTH driver not specified");
     #endif

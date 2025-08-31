@@ -3,6 +3,8 @@
 #include "utils.h"
 #include "sensors/imu/factory.h"
 #include "sensors/depth/factory.h"
+#include "sensors/pressure/factory.h"
+#include "sensors/power/factory.h"
 #include <micro_ros_platformio.h>
 #include <rcl/rcl.h>
 #include <rclc/rclc.h>
@@ -16,13 +18,12 @@
 #include <geometry_msgs/msg/wrench_stamped.h>
 #include <std_msgs/msg/int8_multi_array.h>
 #include <std_msgs/msg/int32.h>
+#include <std_msgs/msg/float32.h>
 #include "thrusters/thrustersFactory.h"
 #include "thrusters/thruster.h"
 #include <vector>
 #include <stdlib.h>
 #include <esp_system.h>
-
-
 
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){errorHandler();}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
@@ -35,34 +36,47 @@ rcl_node_t node;
 
 rcl_publisher_t pub_imu;
 rcl_publisher_t pub_magnetic;
-rcl_publisher_t pub_depth;
-rcl_publisher_t pub_temp;
+rcl_publisher_t pub_fluid_pressure;
+rcl_publisher_t pub_fluid_temp;
+rcl_publisher_t pub_indoor_temp;
+rcl_publisher_t pub_indoor_pressure;
+rcl_publisher_t pub_power_voltage;
+rcl_publisher_t pub_power_current;
 
 rcl_subscription_t sub_wrench;
 
 rcl_timer_t imu_timer;
-rcl_timer_t magnetic_timer;
 rcl_timer_t fluid_pressure_timer;
-rcl_timer_t timer_temp;
+rcl_timer_t indoor_pressure_timer;
+rcl_timer_t power_timer;
 
 rclc_executor_t executor;
-
+// IMU
 sensor_msgs__msg__Imu imu_msg;
 sensor_msgs__msg__MagneticField magnetic_msg;
+// Датчик глубины
 sensor_msgs__msg__FluidPressure fluid_pressure_msg;
-sensor_msgs__msg__Temperature temperature;
-std_msgs__msg__Int32 temp_msg;
+sensor_msgs__msg__Temperature fluid_temperature_msg;
+// Датчик давления в колбе
+sensor_msgs__msg__FluidPressure indoor_pressure_msg;
+sensor_msgs__msg__Temperature indoor_temperature_msg;
+// Датчик тока
+std_msgs__msg__Float32 voltage_msgs;
+std_msgs__msg__Float32 current_msgs;
+
 #if defined(PROD)
 geometry_msgs__msg__WrenchStamped wrench_msg;
 #else
 std_msgs__msg__Int8MultiArray thrusters_power_msg;
-
 #endif
+
 ModularIMU *imu;
 ModularDepthSensor *depth;
-Blinker blinker = Blinker();
+ModularPowerSensor *power;
+ModularPressureSensor *pressure;
+
 ThrusterAllocator *tAllocator;
-Thruster *thr1;
+
 const char* frame = "base_link";
 
 
@@ -149,21 +163,55 @@ void thrustersCallback(const void *msgin){
 	#endif
 }
 
-
-
-void temperatureCallback(rcl_timer_t *, int64_t)
+void powerCallback(rcl_timer_t *, int64_t)
 {
-	auto data = depth->read();
-	temp_msg.data = data.temperature;
-	RCSOFTCHECK(rcl_publish(&pub_temp, &temp_msg, NULL));
+	auto data = power->read();
+	voltage_msgs.data = data.voltage;
+	RCSOFTCHECK(rcl_publish(&pub_power_voltage, &voltage_msgs, NULL));
+	current_msgs.data = data.current;
+	RCSOFTCHECK(rcl_publish(&pub_power_current, &current_msgs, NULL));
+}
+
+
+void pressureCallback(rcl_timer_t *, int64_t)
+{
+	int64_t time_ms = rmw_uros_epoch_millis();
+	indoor_pressure_msg.header.stamp.sec = time_ms / 1000;
+	indoor_pressure_msg.header.stamp.nanosec = (time_ms % 1000) * 1000000;
+
+	rosidl_runtime_c__String__assign(&indoor_pressure_msg.header.frame_id, frame);
+
+	indoor_temperature_msg.header.stamp.sec = time_ms / 1000;
+	indoor_temperature_msg.header.stamp.nanosec = (time_ms % 1000) * 1000000;
+
+	rosidl_runtime_c__String__assign(&indoor_temperature_msg.header.frame_id, frame);
+
+	auto data = pressure->read();
+	indoor_pressure_msg.fluid_pressure = data.pressure;
+	RCSOFTCHECK(rcl_publish(&pub_indoor_pressure, &indoor_pressure_msg, NULL));
+	indoor_temperature_msg.temperature = data.temperature;
+	RCSOFTCHECK(rcl_publish(&pub_indoor_temp, &indoor_temperature_msg, NULL));
 }
 
 
 void fluidPressureCallback(rcl_timer_t *, int64_t)
 {
+	int64_t time_ms = rmw_uros_epoch_millis();
+	fluid_pressure_msg.header.stamp.sec = time_ms / 1000;
+	fluid_pressure_msg.header.stamp.nanosec = (time_ms % 1000) * 1000000;
+
+	rosidl_runtime_c__String__assign(&fluid_pressure_msg.header.frame_id, frame);
+
+	fluid_temperature_msg.header.stamp.sec = time_ms / 1000;
+	fluid_temperature_msg.header.stamp.nanosec = (time_ms % 1000) * 1000000;
+
+	rosidl_runtime_c__String__assign(&fluid_temperature_msg.header.frame_id, frame);
+
 	auto data = depth->read();
 	fluid_pressure_msg.fluid_pressure = data.depth;
-	RCSOFTCHECK(rcl_publish(&pub_depth, &fluid_pressure_msg, NULL));
+	RCSOFTCHECK(rcl_publish(&pub_fluid_pressure, &fluid_pressure_msg, NULL));
+	fluid_temperature_msg.temperature = data.temperature;
+	RCSOFTCHECK(rcl_publish(&pub_fluid_temp, &fluid_temperature_msg, NULL));
 }
 
 void setup()
@@ -187,7 +235,11 @@ void setup()
 
 	imu = createIMU();
 	depth = createDepthSensor();
+	pressure = createPressureSensor();
+	power = createPowerSensor();
+
 	tAllocator = createThrusterAllocator();
+
 	uartDebug("ℹ️ setup ros serial");
 	set_microros_serial_transports(Serial);
 
@@ -208,14 +260,34 @@ void setup()
 		"/sensors/imu"));
 
 	RCCHECK(rclc_publisher_init_default(
-		&pub_depth, &node,
+		&pub_fluid_pressure, &node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, FluidPressure),
-		"/sensors/fluid_pressure"));
+		"/sensors/fluid/pressure"));
 
 	RCCHECK(rclc_publisher_init_default(
-		&pub_temp, &node,
+		&pub_fluid_temp, &node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-		"/sensors/temperature"));
+		"/sensors/fluid/temperature"));
+
+	RCCHECK(rclc_publisher_init_default(
+		&pub_indoor_temp, &node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+		"/sensors/indoor/temperature"));
+
+	RCCHECK(rclc_publisher_init_default(
+		&pub_indoor_pressure, &node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+		"/sensors/indoor/pressure"));
+
+	RCCHECK(rclc_publisher_init_default(
+		&pub_power_voltage, &node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
+		"/sensors/power/voltage"));
+
+	RCCHECK(rclc_publisher_init_default(
+		&pub_power_current, &node,
+		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
+		"/sensors/power/current"));
 
 	// Create thruster subscriber
 
@@ -239,12 +311,15 @@ void setup()
 		&imu_timer, &support, RCL_MS_TO_NS(50), imuCallback));
 
 	RCCHECK(rclc_timer_init_default(
-		&timer_temp, &support, RCL_MS_TO_NS(2000), temperatureCallback));
+		&power_timer, &support, RCL_MS_TO_NS(500), powerCallback));
+
+	RCCHECK(rclc_timer_init_default(
+		&indoor_pressure_timer, &support, RCL_MS_TO_NS(2000), pressureCallback));
 
 	RCCHECK(rclc_timer_init_default(
 		&fluid_pressure_timer, &support, RCL_MS_TO_NS(500), fluidPressureCallback));
 
-	RCCHECK(rclc_executor_init(&executor, &support.context, 4, &rcl_allocator));
+	RCCHECK(rclc_executor_init(&executor, &support.context, 5, &rcl_allocator));
 
 	#if defined(PROD)
 	rclc_executor_add_subscription(
@@ -265,7 +340,8 @@ void setup()
 	#endif
 
 	RCCHECK(rclc_executor_add_timer(&executor, &imu_timer));
-	RCCHECK(rclc_executor_add_timer(&executor, &timer_temp));
+	RCCHECK(rclc_executor_add_timer(&executor, &power_timer));
+	RCCHECK(rclc_executor_add_timer(&executor, &indoor_pressure_timer));
 	RCCHECK(rclc_executor_add_timer(&executor, &fluid_pressure_timer));
 
 	// // Create tasks
@@ -275,9 +351,6 @@ void setup()
 
 	uartDebug("ℹ️ MCU setup finish");
 }
-
-
-
 
 void rosExecutorTask(void *param)
 {
